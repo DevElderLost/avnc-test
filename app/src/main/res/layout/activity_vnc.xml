@@ -81,6 +81,15 @@
                     android:layout_gravity="center_horizontal|bottom"
                     android:layout="@layout/virtual_keys" />
 
+                <!--Virtual Controller: floating, freely-positionable virtual keys overlay-->
+                <FrameLayout
+                    android:id="@+id/virtual_controller_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:visibility="gone" />
+
             </FrameLayout>
 
             <!--A View containing helpful tips will be dynamically inserted here for new users -->

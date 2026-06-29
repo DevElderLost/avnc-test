@@ -20,6 +20,7 @@ import com.gaurav.avnc.ui.vnc.FrameState
 import com.gaurav.avnc.ui.vnc.FrameView
 import com.gaurav.avnc.ui.vnc.ConfirmationDialog
 import com.gaurav.avnc.ui.vnc.LoginFragment
+import com.gaurav.avnc.ui.vnc.VirtualController
 import com.gaurav.avnc.ui.vnc.VirtualKeys
 import com.gaurav.avnc.ui.vnc.VncActivity
 // import com.gaurav.avnc.viewmodel.HomeViewModel
@@ -92,6 +93,8 @@ import com.gaurav.avnc.vnc.VncClient
  *
  * - See [Dispatcher] for overview of input handling.
  * - [VirtualKeys] are used for keys not normally found on Android Keyboards.
+ * - [VirtualController] provides floating, user-positionable key buttons (similar to
+ *   Winlator's input-controls overlay), configured via a checkbox dialog.
  *
  *
  * VNC Connection

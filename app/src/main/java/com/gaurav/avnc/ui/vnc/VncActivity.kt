@@ -99,6 +99,7 @@ class VncActivity : AppCompatActivity() {
     lateinit var binding: ActivityVncBinding
     private val inputHandler = InputHandler(this)
     val virtualKeys by lazy { VirtualKeys(this, inputHandler) }
+    val virtualController by lazy { VirtualController(this, inputHandler) }
     val toolbar by lazy { Toolbar(this) }
     private val serverUnlockPrompt = DeviceAuthPrompt(this)
     private val layoutManager by lazy { LayoutManager(this) }
@@ -121,6 +122,7 @@ class VncActivity : AppCompatActivity() {
         binding.frameView.initialize(viewModel, inputHandler)
         viewModel.frameViewRef = WeakReference(binding.frameView)
         toolbar.initialize()
+        virtualController.initialize()
 
         setupLayout()
         setupNoVideoOverlay()
@@ -357,6 +359,7 @@ class VncActivity : AppCompatActivity() {
         toolbar.onStateChange(isConnected)
         updateStatusContainerVisibility(isConnected)
         autoReconnect(newState)
+        virtualController.onConnectionStateChanged(isConnected)
 
         if (isConnected) {
             showViewerHelp()
