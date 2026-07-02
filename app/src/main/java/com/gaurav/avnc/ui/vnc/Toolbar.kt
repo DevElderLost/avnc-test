@@ -66,6 +66,7 @@ class Toolbar(private val activity: VncActivity) {
     private val openWithButton = viewModel.pref.viewer.toolbarOpenWithButton
     private val openerButton = activity.binding.openToolbarBtn
     private val flyouts = mutableMapOf<ToggleButton, View>()
+    private val onFlyoutToggle = mutableMapOf<ToggleButton, (Boolean) -> Unit>()
 
     fun initialize() {
         binding.keyboardBtn.setOnClickListener { activity.showKeyboard(); close() }
@@ -312,6 +313,13 @@ class Toolbar(private val activity: VncActivity) {
 
                 if (isChecked) // Close others
                     flyouts.keys.forEach { if (it != toggle) it.isChecked = false }
+
+                // Let any flyout-specific logic (e.g. Virtual Controller) react too.
+                // CompoundButton only supports a single listener, so extra behaviour
+                // must be chained through this map instead of calling
+                // setOnCheckedChangeListener again (that would silently overwrite
+                // the listener installed above and break flyout show/hide).
+                onFlyoutToggle[toggle]?.invoke(isChecked)
             }
         }
     }
@@ -325,7 +333,7 @@ class Toolbar(private val activity: VncActivity) {
                 onClose = { binding.virtualControllerToggle.isChecked = false },
         )
 
-        binding.virtualControllerToggle.setOnCheckedChangeListener { _, isChecked ->
+        onFlyoutToggle[binding.virtualControllerToggle] = { isChecked ->
             if (isChecked) {
                 // (Re-)build the flyout content each time it opens, so checkbox states are fresh
                 flyout.inflate()
