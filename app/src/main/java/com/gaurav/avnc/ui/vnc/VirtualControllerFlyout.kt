@@ -130,27 +130,43 @@ class VirtualControllerFlyout(
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(1)).apply {
             setMargins(0, dpToPx(4), 0, dpToPx(4))
         }
-        setBackgroundColor(
-                TypedValue().let { tv ->
-                    activity.theme.resolveAttribute(android.R.attr.listDivider, tv, true)
-                    ContextCompat.getColor(activity, tv.resourceId)
-                }
-        )
+        // Use a theme color attribute that resolves to a color (not a drawable).
+        // colorOutline is a Material3 color; fall back to a neutral gray if not resolved.
+        val dividerColor = TypedValue().let { tv ->
+            if (activity.theme.resolveAttribute(com.google.android.material.R.attr.colorOutline, tv, true)
+                    && tv.type >= TypedValue.TYPE_FIRST_COLOR_INT
+                    && tv.type <= TypedValue.TYPE_LAST_COLOR_INT) {
+                tv.data
+            } else {
+                android.graphics.Color.argb(60, 128, 128, 128)
+            }
+        }
+        setBackgroundColor(dividerColor)
     }
 
     private fun makeTextButton(label: String, onClick: () -> Unit): TextView {
-        val tv = TypedValue()
-        activity.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
         return TextView(activity).apply {
             text = label
             textSize = 12f
-            setTextColor(TypedValue().let { tv2 ->
-                activity.theme.resolveAttribute(
-                        com.google.android.material.R.attr.colorPrimary, tv2, true)
-                ContextCompat.getColor(activity, tv2.resourceId)
-            })
+            // Resolve primary color safely: tv.data holds the color directly when type is a color int.
+            val primaryColor = TypedValue().let { tv ->
+                if (activity.theme.resolveAttribute(
+                                com.google.android.material.R.attr.colorPrimary, tv, true)
+                        && tv.type >= TypedValue.TYPE_FIRST_COLOR_INT
+                        && tv.type <= TypedValue.TYPE_LAST_COLOR_INT) {
+                    tv.data
+                } else if (tv.resourceId != 0) {
+                    ContextCompat.getColor(activity, tv.resourceId)
+                } else {
+                    android.graphics.Color.parseColor("#BB86FC") // fallback purple
+                }
+            }
+            setTextColor(primaryColor)
             setPadding(dpToPx(8), dpToPx(8), dpToPx(4), dpToPx(8))
-            setBackgroundResource(tv.resourceId)
+            // Ripple effect
+            val ripple = TypedValue()
+            activity.theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
+            if (ripple.resourceId != 0) setBackgroundResource(ripple.resourceId)
             isClickable = true
             isFocusable = true
             setOnClickListener { onClick() }
