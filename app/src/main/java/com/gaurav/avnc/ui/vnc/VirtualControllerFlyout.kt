@@ -19,6 +19,7 @@ import android.widget.LinearLayout
 import android.widget.Switch
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import com.gaurav.avnc.R
 
 /**
  * Fills the [toolbar_virtual_controller.xml] flyout panel with a live checkbox-grid
