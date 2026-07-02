@@ -49,11 +49,11 @@
                     android:contentDescription="@string/desc_virtual_keys_btn"
                     android:src="@drawable/ic_keyboard_mini" />
 
-                <ImageButton
-                    android:id="@+id/virtual_controller_btn"
-                    style="@style/ImageButton"
+                <ToggleButton
+                    android:id="@+id/virtual_controller_toggle"
+                    style="@style/ToolbarFlyoutToggle"
                     android:contentDescription="@string/desc_virtual_controller_btn"
-                    android:src="@drawable/ic_floating_controls" />
+                    android:drawableStart="@drawable/ic_floating_controls" />
 
                 <ToggleButton
                     android:id="@+id/view_modes_toggle"
@@ -167,6 +167,29 @@
                     android:contentDescription="@string/desc_view_mode_no_video"
                     app:icon="@drawable/ic_video_off" />
             </com.google.android.material.button.MaterialButtonToggleGroup>
+
+            <!--Virtual Controller flyout: checklist key + edit-mode switch-->
+            <ScrollView
+                android:id="@+id/virtual_controller_group"
+                android:layout_width="220dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:layout_marginHorizontal="@dimen/margin_small"
+                android:background="@drawable/bg_round_rect"
+                android:scrollbars="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/virtual_controller_flyout_content"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingStart="@dimen/padding_small"
+                    android:paddingEnd="@dimen/padding_normal"
+                    android:paddingTop="@dimen/padding_small"
+                    android:paddingBottom="@dimen/padding_small" />
+
+            </ScrollView>
 
         </LinearLayout>
 

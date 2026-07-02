@@ -133,12 +133,9 @@
     <string name="desc_keyboard_btn">Open keyboard</string>
     <string name="desc_virtual_keys_btn">Show virtual keys</string>
     <string name="desc_virtual_controller_btn">Virtual Control (tombol mengambang)</string>
-    <string name="virtual_controller_title">Virtual Control</string>
     <string name="virtual_controller_edit_mode">Mode Edit Posisi</string>
-    <string name="virtual_controller_edit_mode_hint">Aktifkan untuk memindahkan posisi tombol yang sudah tampil di layar. Tombol yang baru dicentang akan ditempatkan otomatis.</string>
     <string name="virtual_controller_apply">Terapkan</string>
     <string name="virtual_controller_reset_positions">Atur Ulang Posisi</string>
-    <string name="virtual_controller_cancel">Batal</string>
     <string name="virtual_controller_done">✓ Selesai, Simpan Posisi</string>
     <string name="desc_view_modes_toggle">View modes</string>
     <string name="desc_view_mode_normal">Normal mode</string>

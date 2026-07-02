@@ -75,7 +75,6 @@ class Toolbar(private val activity: VncActivity) {
         binding.zoomLockBtn.setOnCheckedChangeListener { _, checked -> toggleZoomLock(checked); close() }
         binding.zoomSaveBtn.setOnClickListener { saveZoom(); close() }
         binding.virtualKeysBtn.setOnClickListener { activity.virtualKeys.show(true); close() }
-        binding.virtualControllerBtn.setOnClickListener { activity.virtualController.showKeyPicker(); close() }
 
         // Root view is transparent. Click on it should work just like a click in scrim area
         drawerView.setOnClickListener { close() }
@@ -84,6 +83,7 @@ class Toolbar(private val activity: VncActivity) {
 
         setupAlignment()
         setupFlyouts()
+        setupVirtualControllerFlyout()
         setupFlyoutClose()
         setupOpenerButton()
         setupViewModeSelection()
@@ -302,6 +302,7 @@ class Toolbar(private val activity: VncActivity) {
         flyouts += binding.viewModesToggle to binding.viewModeGroup
         flyouts += binding.gestureStyleToggle to binding.gestureStyleGroup
         flyouts += binding.zoomOptionsToggle to binding.zoomOptionsGroup
+        flyouts += binding.virtualControllerToggle to binding.virtualControllerGroup
 
         flyouts.values.forEach { it.isVisible = false }
 
@@ -311,6 +312,25 @@ class Toolbar(private val activity: VncActivity) {
 
                 if (isChecked) // Close others
                     flyouts.keys.forEach { if (it != toggle) it.isChecked = false }
+            }
+        }
+    }
+
+    private fun setupVirtualControllerFlyout() {
+        val contentRoot = binding.virtualControllerFlyoutContent
+        val flyout = VirtualControllerFlyout(
+                activity = activity,
+                controller = activity.virtualController,
+                contentRoot = contentRoot,
+                onClose = { binding.virtualControllerToggle.isChecked = false },
+        )
+
+        binding.virtualControllerToggle.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                // (Re-)build the flyout content each time it opens, so checkbox states are fresh
+                flyout.inflate()
+            } else {
+                flyout.syncEditSwitch()
             }
         }
     }

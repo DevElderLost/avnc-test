@@ -10,7 +10,6 @@ package com.gaurav.avnc.ui.vnc
 
 import android.annotation.SuppressLint
 import android.graphics.Color
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.Gravity
@@ -18,19 +17,13 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
-import android.widget.CheckBox
 import android.widget.FrameLayout
-import android.widget.GridLayout
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.Switch
 import android.widget.TextView
 import androidx.core.view.isVisible
 import com.gaurav.avnc.R
 import com.gaurav.avnc.ui.vnc.input.InputHandler
 import com.gaurav.avnc.util.AppPreferences
 import com.gaurav.avnc.util.addOnGlobalLayoutListener
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -44,14 +37,15 @@ import kotlin.math.roundToInt
  * overlay.
  *
  * Workflow:
- *  - User taps the "Virtual Control" button in [Toolbar] -> [showKeyPicker] opens a checkbox
- *    list (letters, digits, punctuation, modifiers, navigation keys, ...).
- *  - Checked keys show up as small square floating buttons on the remote screen.
- *  - While "Mode Edit Posisi" is active ([editMode]), touching a button drags it instead of
- *    sending a key event; positions are persisted as fractions of the overlay size.
+ *  - User opens the "Virtual Control" toggle in [Toolbar] → [toolbar_virtual_controller.xml]
+ *    flyout appears (rendered by [VirtualControllerFlyout]).
+ *  - Flyout has live checkboxes; checking/unchecking a key immediately adds/removes the
+ *    floating button via [addKey]/[removeKey].
+ *  - Edit-Position switch ([setEditMode]) lets the user drag buttons to reposition them.
+ *    Positions are persisted as fractions of the overlay size.
  *
- * Visual style is intentionally fixed (white outline, transparent fill, white label) instead
- * of following the app theme, so buttons stay legible on top of arbitrary remote content.
+ * Visual style: white stroke outline, transparent fill, white label — legible over any
+ * remote desktop content without relying on the app theme.
  */
 class VirtualController(private val activity: VncActivity, private val inputHandler: InputHandler) {
 
@@ -93,6 +87,47 @@ class VirtualController(private val activity: VncActivity, private val inputHand
         connected = isConnected
         if (!isConnected && editMode) exitEditMode()
         updateContainerVisibility()
+    }
+
+    /**************************************************************************
+     * Public API used by VirtualControllerFlyout
+     **************************************************************************/
+
+    /** Whether a key with the given keyCode is currently active (floating on screen). */
+    fun hasKey(keyCode: Int): Boolean = keys.any { it.keyCode == keyCode }
+
+    /** Add a key from the catalog immediately (no dialog needed). */
+    fun addKey(entry: VCCatalog.Entry) {
+        if (hasKey(entry.keyCode)) return
+        val idx = keys.size
+        val (x, y) = defaultPosition(idx)
+        val key = VCKey(entry.keyCode, entry.label, entry.isToggle, x, y)
+        keys += key
+        addKeyView(key)
+        saveKeys()
+        updateContainerVisibility()
+    }
+
+    /** Remove a floating key immediately. */
+    fun removeKey(keyCode: Int) {
+        val key = keys.firstOrNull { it.keyCode == keyCode } ?: return
+        activeToggles.remove(keyCode)
+        lockedToggles.remove(keyCode)
+        keyViews.remove(keyCode)?.let { container.removeView(it) }
+        keys.remove(key)
+        saveKeys()
+        updateContainerVisibility()
+    }
+
+    /** Reset all positions to the auto-scatter default (called from flyout "Atur Ulang Posisi"). */
+    fun resetPositions() {
+        keys.forEachIndexed { idx, key ->
+            val (x, y) = defaultPosition(idx)
+            key.x = x
+            key.y = y
+            keyViews[key.keyCode]?.let { placeAt(it, x, y) }
+        }
+        saveKeys()
     }
 
     /**************************************************************************
@@ -191,12 +226,10 @@ class VirtualController(private val activity: VncActivity, private val inputHand
     }
 
     /**
-     * Single touch handler per floating key, covering three mutually exclusive behaviors:
-     *  - Edit mode: drag to reposition (tap with no movement does nothing).
-     *  - Normal key, not edit mode: tap sends a key-down/key-up pair; holding repeats it
-     *    (mirrors [VirtualKeys]' own repeat-while-held behavior).
-     *  - Toggle/modifier key, not edit mode: tap flips it on/off; long-press locks it on
-     *    until tapped again (mirrors [VirtualKeys]' locked meta-key behavior).
+     * Touch handler per floating key:
+     *  - Edit mode: drag to reposition.
+     *  - Toggle/modifier: tap = on/off; long-press = lock on.
+     *  - Normal key: tap sends key-down+key-up; hold repeats.
      */
     @SuppressLint("ClickableViewAccessibility")
     private fun attachTouchHandling(view: TextView, key: VCKey) {
@@ -234,7 +267,7 @@ class VirtualController(private val activity: VncActivity, private val inputHand
                         longPressFired = false
 
                         when {
-                            editMode -> Unit // wait for ACTION_MOVE to decide if this is a drag
+                            editMode -> Unit
                             key.isToggle -> v.postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout().toLong())
                             else -> {
                                 doRepeat = true
@@ -298,7 +331,6 @@ class VirtualController(private val activity: VncActivity, private val inputHand
         view.background = createSquareDrawable(filled = activeToggles.contains(key.keyCode), accent = editMode)
     }
 
-    /** Mirrors [VirtualKeys]: any non-modifier key-up (from any source) releases unlocked modifiers. */
     private fun releaseUnlockedToggles() {
         val toRelease = activeToggles - lockedToggles
         if (toRelease.isEmpty()) return
@@ -340,7 +372,7 @@ class VirtualController(private val activity: VncActivity, private val inputHand
         updateContainerVisibility()
     }
 
-    private fun exitEditMode() {
+    internal fun exitEditMode() {
         setEditMode(false)
         saveKeys()
     }
@@ -355,7 +387,10 @@ class VirtualController(private val activity: VncActivity, private val inputHand
             textSize = 13f
             isClickable = true
             setOnClickListener { exitEditMode() }
-            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
                 gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
                 topMargin = dpToPx(8f)
             }
@@ -369,98 +404,9 @@ class VirtualController(private val activity: VncActivity, private val inputHand
     }
 
     /**************************************************************************
-     * Key picker dialog
+     * Helpers
      **************************************************************************/
 
-    fun showKeyPicker() {
-        val context = activity
-        val checkBoxes = mutableMapOf<Int, CheckBox>()
-
-        val root = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            val pad = dpToPx(16f)
-            setPadding(pad, pad, pad, pad)
-        }
-
-        val editSwitch = Switch(context).apply {
-            text = context.getString(R.string.virtual_controller_edit_mode)
-            isChecked = editMode
-        }
-        root.addView(editSwitch)
-
-        val hint = TextView(context).apply {
-            text = context.getString(R.string.virtual_controller_edit_mode_hint)
-            textSize = 12f
-            alpha = 0.7f
-            setPadding(0, dpToPx(2f), 0, dpToPx(12f))
-        }
-        root.addView(hint)
-
-        VCCatalog.sections.forEach { section ->
-            val header = TextView(context).apply {
-                text = section.title
-                textSize = 14f
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, dpToPx(8f), 0, dpToPx(4f))
-            }
-            root.addView(header)
-
-            val grid = GridLayout(context).apply { columnCount = section.columns }
-            section.entries.forEach { entry ->
-                val cb = CheckBox(context).apply {
-                    text = entry.label
-                    isChecked = keys.any { it.keyCode == entry.keyCode }
-                    layoutParams = GridLayout.LayoutParams().apply {
-                        width = GridLayout.LayoutParams.WRAP_CONTENT
-                        height = GridLayout.LayoutParams.WRAP_CONTENT
-                        val m = dpToPx(2f)
-                        setMargins(m, m, m, m)
-                    }
-                }
-                checkBoxes[entry.keyCode] = cb
-                grid.addView(cb)
-            }
-            root.addView(grid)
-        }
-
-        val scroll = ScrollView(context).apply { addView(root) }
-
-        MaterialAlertDialogBuilder(context)
-                .setTitle(R.string.virtual_controller_title)
-                .setView(scroll)
-                .setPositiveButton(R.string.virtual_controller_apply) { _, _ ->
-                    applyPickerSelection(checkBoxes)
-                    setEditMode(editSwitch.isChecked)
-                }
-                .setNeutralButton(R.string.virtual_controller_reset_positions) { _, _ ->
-                    applyPickerSelection(checkBoxes, resetPositions = true)
-                    setEditMode(editSwitch.isChecked)
-                }
-                .setNegativeButton(R.string.virtual_controller_cancel, null)
-                .show()
-    }
-
-    private fun applyPickerSelection(checkBoxes: Map<Int, CheckBox>, resetPositions: Boolean = false) {
-        val existingByCode = keys.associateBy { it.keyCode }
-        val newKeys = mutableListOf<VCKey>()
-        var autoIndex = 0
-
-        checkBoxes.forEach { (keyCode, cb) ->
-            if (cb.isChecked) {
-                val entry = VCCatalog.findEntry(keyCode) ?: return@forEach
-                val existing = existingByCode[keyCode]
-                val (x, y) = if (existing != null && !resetPositions) existing.x to existing.y else defaultPosition(autoIndex++)
-                newKeys += VCKey(keyCode, entry.label, entry.isToggle, x, y)
-            }
-        }
-
-        keys.clear()
-        keys += newKeys
-        saveKeys()
-        rebuildViews()
-    }
-
-    /** Scatters newly-added keys in a simple grid so they don't all land on top of each other. */
     private fun defaultPosition(index: Int): Pair<Float, Float> {
         val col = index % 4
         val row = (index / 4) % 5
@@ -475,12 +421,8 @@ class VirtualController(private val activity: VncActivity, private val inputHand
 }
 
 /**
- * A single floating key the user picked, with its on-screen position.
- *
- * Position is stored as a fraction (0f..1f) of the overlay's available space, so it scales
- * reasonably across rotation/screen-size changes. [label] is duplicated from [VCCatalog] at
- * selection time so previously-saved keys keep rendering correctly even if the catalog entry
- * is later renamed.
+ * A single floating key: keyCode, display label, toggle flag, and on-screen position
+ * (stored as fraction 0..1 of overlay size so it scales across orientations/screen sizes).
  */
 @Serializable
 data class VCKey(
@@ -493,54 +435,58 @@ data class VCKey(
 
 private val vcKeySerializer = ListSerializer(VCKey.serializer())
 
-/** Static catalog of all keys selectable in the Virtual Controller picker dialog. */
+/** Static catalog of all keys available in the Virtual Controller flyout. */
 object VCCatalog {
 
     data class Entry(val keyCode: Int, val label: String, val isToggle: Boolean = false)
     data class Section(val title: String, val entries: List<Entry>, val columns: Int)
 
     private val modifiers = listOf(
-            Entry(KeyEvent.KEYCODE_CTRL_LEFT, "Ctrl", isToggle = true),
-            Entry(KeyEvent.KEYCODE_SHIFT_LEFT, "Shift", isToggle = true),
-            Entry(KeyEvent.KEYCODE_ALT_LEFT, "Alt", isToggle = true),
-            Entry(KeyEvent.KEYCODE_META_LEFT, "Super", isToggle = true),
-            Entry(KeyEvent.KEYCODE_ESCAPE, "Esc"),
-            Entry(KeyEvent.KEYCODE_TAB, "Tab"),
-            Entry(KeyEvent.KEYCODE_ENTER, "Enter"),
-            Entry(KeyEvent.KEYCODE_SPACE, "Space"),
-            Entry(KeyEvent.KEYCODE_DEL, "Bksp"),
-            Entry(KeyEvent.KEYCODE_FORWARD_DEL, "Del"),
-            Entry(KeyEvent.KEYCODE_INSERT, "Ins"),
-            Entry(KeyEvent.KEYCODE_MOVE_HOME, "Home"),
-            Entry(KeyEvent.KEYCODE_MOVE_END, "End"),
-            Entry(KeyEvent.KEYCODE_PAGE_UP, "PgUp"),
-            Entry(KeyEvent.KEYCODE_PAGE_DOWN, "PgDn"),
-            Entry(KeyEvent.KEYCODE_DPAD_LEFT, "\u2190"),
-            Entry(KeyEvent.KEYCODE_DPAD_RIGHT, "\u2192"),
-            Entry(KeyEvent.KEYCODE_DPAD_UP, "\u2191"),
-            Entry(KeyEvent.KEYCODE_DPAD_DOWN, "\u2193"),
+            Entry(android.view.KeyEvent.KEYCODE_CTRL_LEFT, "Ctrl", isToggle = true),
+            Entry(android.view.KeyEvent.KEYCODE_SHIFT_LEFT, "Shift", isToggle = true),
+            Entry(android.view.KeyEvent.KEYCODE_ALT_LEFT, "Alt", isToggle = true),
+            Entry(android.view.KeyEvent.KEYCODE_META_LEFT, "Super", isToggle = true),
+            Entry(android.view.KeyEvent.KEYCODE_ESCAPE, "Esc"),
+            Entry(android.view.KeyEvent.KEYCODE_TAB, "Tab"),
+            Entry(android.view.KeyEvent.KEYCODE_ENTER, "Enter"),
+            Entry(android.view.KeyEvent.KEYCODE_SPACE, "Space"),
+            Entry(android.view.KeyEvent.KEYCODE_DEL, "Bksp"),
+            Entry(android.view.KeyEvent.KEYCODE_FORWARD_DEL, "Del"),
+            Entry(android.view.KeyEvent.KEYCODE_INSERT, "Ins"),
+            Entry(android.view.KeyEvent.KEYCODE_MOVE_HOME, "Home"),
+            Entry(android.view.KeyEvent.KEYCODE_MOVE_END, "End"),
+            Entry(android.view.KeyEvent.KEYCODE_PAGE_UP, "PgUp"),
+            Entry(android.view.KeyEvent.KEYCODE_PAGE_DOWN, "PgDn"),
+            Entry(android.view.KeyEvent.KEYCODE_DPAD_LEFT, "\u2190"),
+            Entry(android.view.KeyEvent.KEYCODE_DPAD_RIGHT, "\u2192"),
+            Entry(android.view.KeyEvent.KEYCODE_DPAD_UP, "\u2191"),
+            Entry(android.view.KeyEvent.KEYCODE_DPAD_DOWN, "\u2193"),
     )
 
-    private val letters = ('A'..'Z').map { c -> Entry(KeyEvent.KEYCODE_A + (c - 'A'), c.toString()) }
+    private val letters = ('A'..'Z').map { c ->
+        Entry(android.view.KeyEvent.KEYCODE_A + (c - 'A'), c.toString())
+    }
 
-    private val numbers = ('0'..'9').map { c -> Entry(KeyEvent.KEYCODE_0 + (c - '0'), c.toString()) }
+    private val numbers = ('0'..'9').map { c ->
+        Entry(android.view.KeyEvent.KEYCODE_0 + (c - '0'), c.toString())
+    }
 
     private val symbols = listOf(
-            Entry(KeyEvent.KEYCODE_GRAVE, "`"),
-            Entry(KeyEvent.KEYCODE_MINUS, "-"),
-            Entry(KeyEvent.KEYCODE_EQUALS, "="),
-            Entry(KeyEvent.KEYCODE_LEFT_BRACKET, "["),
-            Entry(KeyEvent.KEYCODE_RIGHT_BRACKET, "]"),
-            Entry(KeyEvent.KEYCODE_BACKSLASH, "\\"),
-            Entry(KeyEvent.KEYCODE_SEMICOLON, ";"),
-            Entry(KeyEvent.KEYCODE_APOSTROPHE, "'"),
-            Entry(KeyEvent.KEYCODE_COMMA, ","),
-            Entry(KeyEvent.KEYCODE_PERIOD, "."),
-            Entry(KeyEvent.KEYCODE_SLASH, "/"),
-            Entry(KeyEvent.KEYCODE_AT, "@"),
-            Entry(KeyEvent.KEYCODE_POUND, "#"),
-            Entry(KeyEvent.KEYCODE_STAR, "*"),
-            Entry(KeyEvent.KEYCODE_PLUS, "+"),
+            Entry(android.view.KeyEvent.KEYCODE_GRAVE, "`"),
+            Entry(android.view.KeyEvent.KEYCODE_MINUS, "-"),
+            Entry(android.view.KeyEvent.KEYCODE_EQUALS, "="),
+            Entry(android.view.KeyEvent.KEYCODE_LEFT_BRACKET, "["),
+            Entry(android.view.KeyEvent.KEYCODE_RIGHT_BRACKET, "]"),
+            Entry(android.view.KeyEvent.KEYCODE_BACKSLASH, "\\"),
+            Entry(android.view.KeyEvent.KEYCODE_SEMICOLON, ";"),
+            Entry(android.view.KeyEvent.KEYCODE_APOSTROPHE, "'"),
+            Entry(android.view.KeyEvent.KEYCODE_COMMA, ","),
+            Entry(android.view.KeyEvent.KEYCODE_PERIOD, "."),
+            Entry(android.view.KeyEvent.KEYCODE_SLASH, "/"),
+            Entry(android.view.KeyEvent.KEYCODE_AT, "@"),
+            Entry(android.view.KeyEvent.KEYCODE_POUND, "#"),
+            Entry(android.view.KeyEvent.KEYCODE_STAR, "*"),
+            Entry(android.view.KeyEvent.KEYCODE_PLUS, "+"),
     )
 
     val sections = listOf(
