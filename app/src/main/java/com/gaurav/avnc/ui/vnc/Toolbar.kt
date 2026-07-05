@@ -333,9 +333,16 @@ class Toolbar(private val activity: VncActivity) {
                 onClose = { binding.virtualControllerToggle.isChecked = false },
         )
 
+        // Property flyout: shown when a key is long-pressed in edit mode.
+        val container = activity.binding.virtualControllerContainer
+        val propsFlyout = VirtualControllerKeyPropsFlyout(activity, activity.virtualController, container)
+        activity.virtualController.onKeyLongPressInEditMode = { key, anchorView ->
+            propsFlyout.show(key, anchorView)
+        }
+
         onFlyoutToggle[binding.virtualControllerToggle] = { isChecked ->
             if (isChecked) {
-                // (Re-)build the flyout content each time it opens, so checkbox states are fresh
+                propsFlyout.dismiss()
                 flyout.inflate()
             } else {
                 flyout.syncEditSwitch()
