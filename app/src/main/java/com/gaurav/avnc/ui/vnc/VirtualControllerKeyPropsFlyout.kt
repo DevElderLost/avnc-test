@@ -144,16 +144,16 @@ class VirtualControllerKeyPropsFlyout(
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
         val panelH = panel.measuredHeight.takeIf { it > 0 } ?: dp(180)
 
-        val cw = container.width; val ch = container.height
+        val cw = container.width.toFloat(); val ch = container.height.toFloat()
         val ax = anchor.x; val ay = anchor.y
-        val aw = anchor.width; val ah = anchor.height
+        val aw = anchor.width.toFloat()
 
         // Prefer below-right; fallback if outside bounds
-        var px = ax + aw + dp(6)
+        var px = ax + aw + dp(6).toFloat()
         var py = ay
 
-        if (px + panelW > cw) px = (ax - panelW - dp(6)).coerceAtLeast(0f)
-        if (py + panelH > ch) py = (ch - panelH - dp(4)).coerceAtLeast(0f)
+        if (px + panelW > cw) px = (ax - panelW - dp(6).toFloat()).coerceAtLeast(0f)
+        if (py + panelH.toFloat() > ch) py = (ch - panelH.toFloat() - dp(4).toFloat()).coerceAtLeast(0f)
 
         (panel.layoutParams as FrameLayout.LayoutParams).apply {
             leftMargin = px.toInt(); topMargin = py.toInt()
