@@ -58,7 +58,11 @@ class VirtualControllerKeyPropsFlyout(
             container.removeView(it)
             currentPanel = null
         }
+        // IMPORTANT: reset isClickable so the container stops intercepting touch events.
+        // setOnClickListener(null) alone does NOT reset isClickable to false.
         container.setOnClickListener(null)
+        container.isClickable = false
+        container.isFocusable = false
     }
 
     // -------------------------------------------------------------------------

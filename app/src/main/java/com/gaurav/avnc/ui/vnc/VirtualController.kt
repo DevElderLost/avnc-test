@@ -343,7 +343,14 @@ class VirtualController(private val activity: VncActivity, private val inputHand
         updateContainerVisibility()
     }
 
-    internal fun exitEditMode() { setEditMode(false); saveKeys() }
+    internal fun exitEditMode() {
+        setEditMode(false)
+        saveKeys()
+        // Guard: ensure the container is not blocking touches after edit mode ends.
+        // The props flyout may have left isClickable=true on the container.
+        container.isClickable = false
+        container.isFocusable = false
+    }
 
     private fun showDoneChip() {
         if (doneChip != null) return
