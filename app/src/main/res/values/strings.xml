@@ -142,7 +142,8 @@
     <string name="vc_props_width_val">Lebar: %d dp</string>
     <string name="vc_props_height">Tinggi (dp)</string>
     <string name="vc_props_height_val">Tinggi: %d dp</string>
-    <string name="vc_props_alpha">Transparansi (%%)</string>
+    <string name="vc_props_alpha">Transparansi (%)</string>
+    <string name="vc_props_reset">Reset</string>
     <string name="vc_props_alpha_val">Transparansi: %d%%</string>
     <string name="vc_props_ok">✓ OK</string>
     <string name="desc_view_modes_toggle">View modes</string>

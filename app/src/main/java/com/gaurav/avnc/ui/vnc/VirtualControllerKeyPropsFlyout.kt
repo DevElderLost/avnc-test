@@ -119,7 +119,11 @@ class VirtualControllerKeyPropsFlyout(
 
         // Alpha slider (0.1 … 1.0 mapped to 1 … 100)
         var currentA = key.alpha
-        val aLabel = makePropLabel(activity.getString(R.string.vc_props_alpha), (currentA * 100).toInt())
+        val aLabel = TextView(activity).apply {
+            text = activity.getString(R.string.vc_props_alpha_val, (currentA * 100).toInt())
+            setTextColor(android.graphics.Color.LTGRAY); textSize = 12f
+            setPadding(0, dp(6), 0, dp(2))
+        }
         root.addView(aLabel)
         root.addView(makeSeekBar(currentA * 100f, 10f, 100f) { v ->
             currentA = v / 100f
@@ -129,10 +133,18 @@ class VirtualControllerKeyPropsFlyout(
 
         root.addView(makeDivider())
 
-        // OK button
+        // Action row: Reset + OK
         val okRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END
         }
+        okRow.addView(makeTextButton(activity.getString(R.string.vc_props_reset)) {
+            currentW = VCKey.DEFAULT_DP; currentH = VCKey.DEFAULT_DP; currentA = 1.0f
+            controller.applyKeyProps(key.keyCode, currentW, currentH, currentA)
+            // Update labels
+            wLabel.text = activity.getString(R.string.vc_props_width_val, currentW.toInt())
+            hLabel.text = activity.getString(R.string.vc_props_height_val, currentH.toInt())
+            aLabel.text = activity.getString(R.string.vc_props_alpha_val, (currentA * 100).toInt())
+        })
         okRow.addView(makeTextButton(activity.getString(R.string.vc_props_ok)) { dismiss() })
         root.addView(okRow)
 
