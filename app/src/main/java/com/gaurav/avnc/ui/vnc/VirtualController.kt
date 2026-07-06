@@ -7,6 +7,7 @@
 package com.gaurav.avnc.ui.vnc
 
 import android.annotation.SuppressLint
+import android.os.SystemClock
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
@@ -86,7 +87,7 @@ class VirtualController(private val activity: VncActivity, private val inputHand
         if (hasKey(entry.keyCode)) return
         val (x, y) = defaultPosition(keys.size)
         val key = VCKey(entry.keyCode, entry.label, entry.isToggle,
-            x, y, needsShift = entry.needsShift)
+            x, y, needsShift = entry.needsShift, needsNumLock = entry.needsNumLock)
         keys += key
         addKeyView(key)
         saveKeys()
@@ -282,16 +283,26 @@ class VirtualController(private val activity: VncActivity, private val inputHand
     }
 
     private fun sendVcKey(key: VCKey) {
-        if (key.needsShift) {
-            // Negative keyCodes are synthetic IDs for Shift+key combos.
-            // Look up the real base keyCode from VCCatalog.shiftKeyMap.
-            val realCode = if (key.keyCode < 0) VCCatalog.shiftKeyMap[key.keyCode] ?: return
-                           else key.keyCode
-            sendKey(KeyEvent.KEYCODE_SHIFT_LEFT, true)
-            sendKey(realCode, true); sendKey(realCode, false)
-            sendKey(KeyEvent.KEYCODE_SHIFT_LEFT, false)
-        } else {
-            sendKey(key.keyCode, true); sendKey(key.keyCode, false)
+        when {
+            key.needsShift -> {
+                // Shift+symbol combos: look up real keyCode from shiftKeyMap.
+                val realCode = if (key.keyCode < 0) VCCatalog.shiftKeyMap[key.keyCode] ?: return
+                               else key.keyCode
+                sendKey(KeyEvent.KEYCODE_SHIFT_LEFT, true)
+                sendKeyWithMeta(realCode, true, computeActiveMeta(excludeModifierCode = KeyEvent.KEYCODE_SHIFT_LEFT))
+                sendKeyWithMeta(realCode, false, computeActiveMeta(excludeModifierCode = KeyEvent.KEYCODE_SHIFT_LEFT))
+                sendKey(KeyEvent.KEYCODE_SHIFT_LEFT, false)
+            }
+            key.needsNumLock -> {
+                // Numpad keys: include META_NUM_LOCK_ON so KeyHandler doesn't ignore them.
+                sendKeyWithMeta(key.keyCode, true,  computeActiveMeta() or KeyEvent.META_NUM_LOCK_ON)
+                sendKeyWithMeta(key.keyCode, false, computeActiveMeta() or KeyEvent.META_NUM_LOCK_ON)
+            }
+            else -> {
+                // Normal key: include active modifier metaState so Ctrl/Alt combos are explicit.
+                sendKeyWithMeta(key.keyCode, true,  computeActiveMeta(excludeModifierCode = key.keyCode))
+                sendKeyWithMeta(key.keyCode, false, computeActiveMeta(excludeModifierCode = key.keyCode))
+            }
         }
     }
 
@@ -320,9 +331,49 @@ class VirtualController(private val activity: VncActivity, private val inputHand
             releaseUnlockedToggles()
     }
 
+    /**
+     * Send a key event. Uses ACTION_DOWN/UP with no extra metaState.
+     * Used for modifier keys themselves (Ctrl/Shift/Alt/Meta DOWN/UP).
+     */
     private fun sendKey(keyCode: Int, isDown: Boolean) {
         inputHandler.onVkKeyEvent(
             KeyEvent(if (isDown) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP, keyCode))
+    }
+
+    /**
+     * Send a key event with explicit metaState so KeyHandler knows which modifiers
+     * are active. This is critical for Ctrl+Fkey, Ctrl+letter, etc. to work reliably:
+     * the KeyEvent carries the modifier info explicitly rather than relying solely on
+     * KeyHandler's internal vkMetaState tracking.
+     */
+    private fun sendKeyWithMeta(keyCode: Int, isDown: Boolean, meta: Int) {
+        val now = SystemClock.uptimeMillis()
+        inputHandler.onVkKeyEvent(
+            KeyEvent(now, now, if (isDown) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP,
+                     keyCode, 0, meta))
+    }
+
+    /**
+     * Compute a metaState int from currently active toggle modifiers.
+     * @param excludeModifierCode keyCode to exclude (the key being sent itself).
+     */
+    private fun computeActiveMeta(excludeModifierCode: Int = -1): Int {
+        var meta = 0
+        activeToggles.forEach { code ->
+            if (code == excludeModifierCode) return@forEach
+            meta = meta or when (code) {
+                KeyEvent.KEYCODE_CTRL_LEFT,  KeyEvent.KEYCODE_CTRL_RIGHT  ->
+                    KeyEvent.META_CTRL_ON  or KeyEvent.META_CTRL_LEFT_ON
+                KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT ->
+                    KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
+                KeyEvent.KEYCODE_ALT_LEFT,   KeyEvent.KEYCODE_ALT_RIGHT   ->
+                    KeyEvent.META_ALT_ON   or KeyEvent.META_ALT_LEFT_ON
+                KeyEvent.KEYCODE_META_LEFT,  KeyEvent.KEYCODE_META_RIGHT  ->
+                    KeyEvent.META_META_ON  or KeyEvent.META_META_LEFT_ON
+                else -> 0
+            }
+        }
+        return meta
     }
 
     // -------------------------------------------------------------------------
@@ -384,7 +435,8 @@ data class VCKey(
     var widthDp: Float = DEFAULT_DP,
     var heightDp: Float = DEFAULT_DP,
     var alpha: Float = 1.0f,
-    val needsShift: Boolean = false,   // true for Shift+key combos (!@#$%^&*...)
+    val needsShift: Boolean = false,     // true for Shift+key combos (!@#$%^&*...)
+    val needsNumLock: Boolean = false,   // true for numpad keys (requires META_NUM_LOCK_ON)
 ) {
     companion object {
         const val DEFAULT_DP = 42f
@@ -402,6 +454,7 @@ object VCCatalog {
         val label: String,
         val isToggle: Boolean = false,
         val needsShift: Boolean = false,
+        val needsNumLock: Boolean = false,
     )
 
     data class Section(val title: String, val entries: List<Entry>, val columns: Int)
@@ -481,11 +534,34 @@ object VCCatalog {
         Entry(-17, "~",  needsShift = true),   // Shift+`
     )
 
+    // Numpad keys: distinct from regular number row.
+    // needsNumLock=true causes META_NUM_LOCK_ON to be added when sending,
+    // which prevents KeyHandler.shouldIgnoreEvent() from dropping them.
+    private val numpadKeys = listOf(
+        Entry(KeyEvent.KEYCODE_NUMPAD_7, "Num7", needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_8, "Num8", needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_9, "Num9", needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_DIVIDE,   "N/",   needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_4, "Num4", needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_5, "Num5", needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_6, "Num6", needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_MULTIPLY, "N*",   needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_1, "Num1", needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_2, "Num2", needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_3, "Num3", needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_SUBTRACT, "N-",   needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_0, "Num0", needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_DOT,      "N.",   needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_ENTER,    "NEntr",needsNumLock = true),
+        Entry(KeyEvent.KEYCODE_NUMPAD_ADD,      "N+",   needsNumLock = true),
+    )
+
     val sections = listOf(
         Section("Ctrl, Shift & lainnya",  modifiers,    columns = 3),
         Section("F1 – F12",               functionKeys, columns = 4),
         Section("Huruf (A-Z)",            letters,      columns = 6),
         Section("Angka (0-9)",            numbers,      columns = 5),
+        Section("Numpad",                 numpadKeys,   columns = 4),
         Section("Tanda baca",             symbols,      columns = 5),
         Section("Shift + tanda baca",     shiftSymbols, columns = 5),
     )
